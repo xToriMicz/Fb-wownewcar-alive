@@ -1,0 +1,8 @@
+__pycache__/
+.chrome_profile/
+.env
+*.session.json
+screenshots/
+data/
+.venv/
+tracker.db
