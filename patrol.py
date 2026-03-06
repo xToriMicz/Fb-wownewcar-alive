@@ -36,13 +36,18 @@ def patrol(page: Page):
     today = stats_today()
     print(f"Today so far: {today['comments']} comments, {today['reactions']} reactions, {today['replies']} replies")
 
+    # Track posts we've already acted on THIS run (prevents double-commenting)
+    acted_posts: set[str] = set()
+
     for target_url in targets:
         print(f"\nPatrolling: {target_url}")
         page.goto(target_url)
         sleep_ms(random_between(3000, 5000))
 
-        post_count = random_between(3, 6)
-        for i in range(post_count):
+        scroll_count = random_between(3, 6)
+        seen_indices: set[int] = set()
+
+        for i in range(scroll_count):
             human_scroll(page)
 
             posts = page.locator(SEL_POST_TEXT)
@@ -50,7 +55,13 @@ def patrol(page: Page):
             if count == 0:
                 continue
 
+            # Pick a post we haven't seen yet in this target
             post_index = min(i, count - 1)
+            if post_index in seen_indices:
+                # No new posts loaded — skip
+                continue
+            seen_indices.add(post_index)
+
             post = posts.nth(post_index)
 
             try:
@@ -58,7 +69,19 @@ def patrol(page: Page):
                 if not post_text.strip():
                     continue
 
+                # Fingerprint: first 200 chars to deduplicate
+                post_key = post_text[:200].strip()
+
                 print(f"\nPost {i + 1}: {post_text[:80]}...")
+
+                # Skip if we already acted on this post (this run OR previous runs)
+                if post_key in acted_posts:
+                    print("  Already acted this run — skipping")
+                    continue
+                if already_commented_on(post_text) or _already_commented(post.locator(SEL_ARTICLE).first):
+                    print("  Already commented — skipping")
+                    acted_posts.add(post_key)
+                    continue
 
                 # Get the article container (parent of everything)
                 article = post.locator(SEL_ARTICLE).first
@@ -70,12 +93,7 @@ def patrol(page: Page):
                     for c in existing[:3]:
                         print(f'    - "{c}"')
 
-                # Check if we already commented on this post (DB + DOM)
-                if already_commented_on(post_text) or _already_commented(article):
-                    print("  Already commented — skipping")
-                    continue
-
-                # Step 2: Decide action
+                # Step 2: Decide ONE action per post — comment OR react OR skip
                 roll = random.random()
                 if roll < 0.3 and comment_count < CONFIG["humanize"]["daily_comment_limit"]:
                     intensity = _pick_intensity(comment_count)
@@ -99,6 +117,8 @@ def patrol(page: Page):
                 else:
                     print("  Scrolled past")
 
+                # Mark this post as acted on regardless of action type
+                acted_posts.add(post_key)
                 random_delay()
 
             except Exception as e:

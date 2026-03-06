@@ -111,9 +111,13 @@ def record_reply(their_comment: str, our_reply: str, comment_id: int = None,
 
 
 def already_commented_on(post_text: str) -> bool:
-    """Check if this worker already commented on a post (by text prefix match)."""
+    """Check if this worker already commented on a post (by text prefix match).
+
+    Uses first 100 chars for matching — shorter prefix is more robust
+    against minor text extraction differences between runs.
+    """
     conn = get_db()
-    prefix = post_text[:200]
+    prefix = post_text[:100]
     worker = _get_worker()
     row = conn.execute(
         "SELECT 1 FROM comments WHERE worker = ? AND post_text LIKE ? LIMIT 1",
