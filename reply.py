@@ -5,7 +5,7 @@ from playwright.sync_api import Page, Locator
 
 from config import CONFIG
 from ai import generate_reply
-from db import get_our_comments, record_reply
+from db import get_our_comments, record_reply, record_reaction
 from humanize import human_scroll, random_delay, human_move_to, random_between, sleep_ms
 
 SEL_ARTICLE = '[role="article"]'
@@ -31,6 +31,7 @@ def reply_mode(page: Page):
         by_target.setdefault(target, []).append(c)
 
     reply_count = 0
+    like_count = 0
 
     for target_url, comments in by_target.items():
         if not target_url:
@@ -46,46 +47,59 @@ def reply_mode(page: Page):
 
         for comment_record in comments[:10]:
             try:
-                result = _find_and_reply(page, comment_record)
-                if result:
-                    reply_count += result
+                r, l = _find_and_reply(page, comment_record)
+                reply_count += r
+                like_count += l
+                if r or l:
                     random_delay()
             except Exception as e:
                 print(f"  Error checking comment #{comment_record['id']}: {e}")
 
-    print(f"\nReply mode done. Replies sent: {reply_count}")
+    print(f"\nReply mode done. Replies: {reply_count}, Likes: {like_count}")
 
 
-def _find_and_reply(page: Page, comment_record: dict) -> int:
-    """Find a post matching our comment, check for replies to us, respond."""
+def _find_and_reply(page: Page, comment_record: dict) -> tuple[int, int]:
+    """Find a post matching our comment, check for replies, respond or like.
+    Returns (replies_sent, likes_given)."""
     our_text = comment_record["comment_text"]
     post_text = comment_record["post_text"] or ""
     comment_id = comment_record["id"]
+    target = comment_record.get("target_page", "")
 
     # Try to find our comment on the page by text
-    our_comment_el = page.locator(f'div[dir="auto"]:has-text("{our_text[:40]}")').first
+    short = our_text[:40].replace('"', '\\"')
+    our_comment_el = page.locator(f'div[dir="auto"]:has-text("{short}")').first
     if not our_comment_el.is_visible(timeout=2000):
-        return 0
+        return 0, 0
 
     # Find the parent article
     article = our_comment_el.locator('xpath=ancestor::div[@role="article"]').first
 
     # Look for reply elements after our comment
-    # On Facebook, replies are nested articles or div blocks following the comment
     replies_to_us = _find_replies_to_comment(page, article, our_text)
 
     if not replies_to_us:
-        return 0
+        return 0, 0
 
     print(f"  Found {len(replies_to_us)} reply(ies) to comment #{comment_id}")
     replies_sent = 0
+    likes_given = 0
 
-    for their_text in replies_to_us[:2]:  # Max 2 replies per comment
+    for their_text in replies_to_us[:2]:
+        # 50% chance: just like instead of replying
+        if random.random() < 0.5:
+            liked = _like_reply(page, article, their_text)
+            if liked:
+                likes_given += 1
+                record_reaction(their_text, target, reaction_type="like_reply")
+                print(f'  Liked reply: "{their_text[:50]}..."')
+                sleep_ms(random_between(1000, 2000))
+            continue
+
         reply_text = generate_reply(post_text, their_text)
         if not reply_text:
             continue
 
-        # Try to reply
         success = _send_reply(page, article, reply_text)
         if success:
             record_reply(their_text, reply_text, comment_id=comment_id)
@@ -93,7 +107,7 @@ def _find_and_reply(page: Page, comment_record: dict) -> int:
             print(f'  Replied: "{reply_text}"')
             sleep_ms(random_between(2000, 4000))
 
-    return replies_sent
+    return replies_sent, likes_given
 
 
 def _find_replies_to_comment(page: Page, article: Locator, our_text: str) -> list[str]:
@@ -123,6 +137,26 @@ def _find_replies_to_comment(page: Page, article: Locator, our_text: str) -> lis
     except Exception:
         pass
     return replies
+
+
+def _like_reply(page: Page, article: Locator, reply_text: str) -> bool:
+    """Like a specific reply comment by finding its like button."""
+    try:
+        short = reply_text[:30].replace('"', '\\"')
+        reply_el = article.locator(f'div[dir="auto"]:has-text("{short}")').first
+        if not reply_el.is_visible(timeout=2000):
+            return False
+
+        # Find the nearest like button relative to this reply text
+        # Facebook reply like buttons are typically nearby in the DOM
+        reply_container = reply_el.locator('xpath=ancestor::div[@role="article"]').first
+        like_btn = reply_container.locator('[role="button"][aria-label="ถูกใจ"]').first
+        if like_btn.count() > 0:
+            like_btn.click(force=True)
+            return True
+    except Exception:
+        pass
+    return False
 
 
 def _send_reply(page: Page, article: Locator, text: str) -> bool:

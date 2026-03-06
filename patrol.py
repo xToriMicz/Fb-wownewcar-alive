@@ -30,7 +30,8 @@ def patrol(page: Page):
 
     comment_count = 0
     react_count = 0
-    os.makedirs("screenshots", exist_ok=True)
+    screenshots_dir = CONFIG.get("screenshots_dir", "screenshots")
+    os.makedirs(screenshots_dir, exist_ok=True)
 
     today = stats_today()
     print(f"Today so far: {today['comments']} comments, {today['reactions']} reactions, {today['replies']} replies")
@@ -86,7 +87,7 @@ def patrol(page: Page):
                             comment_count += 1
                             record_comment(post_text, comment_text, target_url, intensity)
                             print(f'  Commented [{intensity}]: "{comment_text}"')
-                            page.screenshot(path=f"screenshots/comment_{comment_count}.png")
+                            _screenshot_our_comment(page, article, comment_text, comment_count, screenshots_dir)
                         else:
                             print(f'  Failed to post: "{comment_text}"')
 
@@ -239,6 +240,27 @@ def _try_send_comment(page: Page, textbox: Locator) -> bool:
         pass
 
     return False
+
+
+def _screenshot_our_comment(page: Page, article: Locator, comment_text: str, count: int,
+                            screenshots_dir: str = "screenshots"):
+    """Take a targeted screenshot of our comment element."""
+    path = f"{screenshots_dir}/comment_{count}.png"
+    try:
+        short = comment_text[:30].replace('"', '\\"')
+        our_el = article.locator(f'div[dir="auto"]:has-text("{short}")').first
+        if our_el.is_visible(timeout=3000):
+            our_el.screenshot(path=path)
+            print(f"  Screenshot: {path} (element)")
+            return
+    except Exception:
+        pass
+    try:
+        article.screenshot(path=path)
+        print(f"  Screenshot: {path} (article fallback)")
+    except Exception:
+        page.screenshot(path=path)
+        print(f"  Screenshot: {path} (full page fallback)")
 
 
 def _react_to_post(page: Page, article: Locator) -> bool:

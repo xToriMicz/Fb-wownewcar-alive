@@ -6,3 +6,7 @@ screenshots/
 data/
 .venv/
 tracker.db
+
+# Per-worker runtime data (Chrome profiles + screenshots)
+profiles/*/.chrome_profile/
+profiles/*/screenshots/
