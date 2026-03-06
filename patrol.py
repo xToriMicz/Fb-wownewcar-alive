@@ -150,7 +150,10 @@ def _comment_on_post(page: Page, article: Locator, text: str) -> bool:
             return False
 
         # Scroll into view + click (force to bypass overlay interception)
-        comment_btn.scroll_into_view_if_needed(timeout=5000)
+        try:
+            comment_btn.scroll_into_view_if_needed(timeout=3000)
+        except Exception:
+            pass
         sleep_ms(500)
         human_move_to(page, comment_btn)
         comment_btn.click(force=True)
@@ -272,7 +275,11 @@ def _react_to_post(page: Page, article: Locator) -> bool:
             print("  No like button in article")
             return False
 
-        like_btn.scroll_into_view_if_needed(timeout=5000)
+        try:
+            like_btn.scroll_into_view_if_needed(timeout=3000)
+        except Exception:
+            # Button might be off-screen or hidden behind overlay — try clicking anyway
+            pass
         sleep_ms(500)
         # Use force=True — Facebook images/overlays often intercept clicks
         like_btn.click(force=True)
