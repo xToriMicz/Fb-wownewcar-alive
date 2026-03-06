@@ -123,10 +123,10 @@ def _scrape_top_comments(article: Locator) -> list[str]:
 
 
 def _already_commented(article: Locator) -> bool:
-    """Check if Wownewcars already commented on this post."""
+    """Check if our page already commented on this post."""
     try:
-        # Look for our page name in comment authors within the article
-        our_comments = article.locator('a:has-text("Wownewcars")')
+        page_name = CONFIG["page"]["name"]
+        our_comments = article.locator(f'a:has-text("{page_name}")')
         return our_comments.count() > 0
     except Exception:
         return False
@@ -162,7 +162,8 @@ def _comment_on_post(page: Page, article: Locator, text: str) -> bool:
             textbox = page.locator(SEL_TEXTBOX).first
         if not textbox.is_visible(timeout=2000):
             # Fallback: textbox with page name
-            textbox = page.locator('[role="textbox"][aria-label*="Wownewcars"]').first
+            page_name = CONFIG["page"]["name"]
+            textbox = page.locator(f'[role="textbox"][aria-label*="{page_name}"]').first
         if not textbox.is_visible(timeout=1000):
             print("  No textbox found")
             return False

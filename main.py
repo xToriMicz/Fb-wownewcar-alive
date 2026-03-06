@@ -119,7 +119,12 @@ def _loop(page, worker_name: str):
 
 
 def orchestrate():
-    """Launch all workers as separate subprocesses."""
+    """Launch all workers as separate subprocesses.
+
+    IP safety: workers start with 30-90s stagger delay.
+    Same IP = max 2-3 accounts. Space activity apart.
+    For more accounts, add proxy support per worker in worker.json.
+    """
     from config import list_workers
 
     workers = list_workers()
@@ -131,7 +136,12 @@ def orchestrate():
     print(f"Launching {len(workers)} worker(s): {', '.join(workers)}")
 
     processes = []
-    for name in workers:
+    for i, name in enumerate(workers):
+        if i > 0:
+            delay = random.randint(30, 90)
+            print(f"  Stagger delay: {delay}s before next worker (IP safety)")
+            time.sleep(delay)
+
         cmd = [sys.executable, __file__, "--worker", name, "--loop"]
         print(f"  Starting: {name}")
         proc = subprocess.Popen(
